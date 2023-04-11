@@ -18,7 +18,7 @@ logger=logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-g_expire_seconds = Gauge('jks_monitor_expire_seconds', 'Seconds to cert expire', ['path', 'alias', 'cn'])
+g_expire_seconds = Gauge('jks_monitor_expire_seconds', 'Seconds to cert expire', ['path', 'alias', 'cn','type'])
 
 
 class Config(BaseSettings):
@@ -58,27 +58,33 @@ def _get_cert(certificate):
 
 
 def update_metrics(jks_path, jks_password):
+    #https://github.com/saltstack/salt/blob/2bd55266c8ecc929a3a0a9aec1797a368c521072/salt/modules/keystore.py#L2
+
     ks = jks.KeyStore.load(jks_path, jks_password)
-    for alias, pk in list(ks.private_keys.items()):
-        logger.debug(f"Found alias={alias}")
-        pk_type = None
-        if isinstance(pk, jks.PrivateKeyEntry):
-            cert_result = pk.cert_chain[0][1]
-            public_cert = _get_cert(pk.cert_chain[0][1])
-            pk_type = "PrivateKeyEntry"
-        elif isinstance(pk, jks.TrustedCertEntry):
-            public_cert = _get_cert(pk.cert)
-            pk_type = "TrustedCertEntry"
 
-        cert_expires = datetime.strptime(
-            str(public_cert.get_notAfter(), "ascii"), "%Y%m%d%H%M%SZ")
+    entries = ks.entries.items()
 
-        cert_expires_sec = (cert_expires - datetime.now()).total_seconds()
-        cn = "Undefined"
-        for name, value in public_cert.get_subject().get_components():
-            if name.lower() == b'cn':
-                cn = str(value, 'utf-8')
-        g_expire_seconds.labels(path=jks_path, alias=alias, cn=cn).set(cert_expires_sec)
+    if entries:
+        for entry_alias, cert_enc in entries:
+            logger.debug(f"Found alias={entry_alias}")
+            pk_type = None
+            if isinstance(cert_enc, jks.PrivateKeyEntry):
+                public_cert = _get_cert(cert_enc.cert_chain[0][1])
+                pk_type = "PrivateKey"
+            elif isinstance(cert_enc, jks.TrustedCertEntry):
+                public_cert = _get_cert(cert_enc.cert)
+                pk_type = "TrustedCert"
+
+            cert_expires = datetime.strptime(
+                str(public_cert.get_notAfter(), "ascii"), "%Y%m%d%H%M%SZ")
+
+            cert_expires_sec = (cert_expires - datetime.now()).total_seconds()
+            cn = "Undefined"
+            for name, value in public_cert.get_subject().get_components():
+                if name.lower() == b'cn':
+                    cn = str(value, 'utf-8')
+
+            g_expire_seconds.labels(path=jks_path, alias=entry_alias, cn=cn, type=pk_type).set(cert_expires_sec)
 
 
 def run():
@@ -92,12 +98,11 @@ def run():
         logging.getLogger().setLevel(logging.DEBUG)
 
     for jks_path in config.jks_path:
-        print(config.jks_path)
         if not os.path.isfile(jks_path):
             logging.error(f"JKS_PATH: {jks_path} is not a file")
             sys.exit(1)
 
-    if len(config.jks_path) != len(config.jks_password) or len(config.jks_password) != 1:
+    if not (len(config.jks_path) == len(config.jks_password) or len(config.jks_password) == 1):
         logger.error(f"JKS_PASSWORD number of elements not equal")
         sys.exit(3)
 
@@ -115,8 +120,8 @@ def run():
             for idx, jks_path in enumerate(config.jks_path):
                 pass_idx = 0 if jks_password_single else idx
                 password = config.jks_password[pass_idx]
-                print(idx, pass_idx, password.get_secret_value(),)
                 update_metrics(jks_path, password.get_secret_value())
-                time.sleep(config.refresh_seconds)
+
+            time.sleep(config.refresh_seconds)
     except KeyboardInterrupt:
         logger.info("Stop")
