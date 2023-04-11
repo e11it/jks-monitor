@@ -1,0 +1,22 @@
+[tool.poetry.scripts]
+jks_monitor_cli = 'jks_monitor.cli:run'
+
+[tool.poetry]
+name = "jks-monitor"
+version = "0.1.0"
+description = ""
+authors = ["e11it <im@e11it.ru>"]
+readme = "README.md"
+packages = [{include = "jks_monitor"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pyjks = "^20.0.0"
+pyopenssl = "^23.1.1"
+prometheus-client = "^0.16.0"
+pydantic = {extras = ["dotenv"], version = "^1.10.7"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
