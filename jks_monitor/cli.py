@@ -18,7 +18,7 @@ logger=logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-g_expire_seconds = Gauge('jks_monitor_expire_seconds', 'Description of gauge', ['path', 'alias', 'cn'])
+g_expire_seconds = Gauge('jks_monitor_expire_seconds', 'Seconds to cert expire', ['path', 'alias', 'cn'])
 
 
 class Config(BaseSettings):
@@ -26,7 +26,7 @@ class Config(BaseSettings):
     jks_password: list[SecretStr] = ["changeit"]
 
     port: int = 8000
-    refresh_seconds: int = 60
+    refresh_seconds: int = 3600
     platform_metrics: bool = False
     debug: bool = False
 
@@ -96,13 +96,12 @@ def run():
         if not os.path.isfile(jks_path):
             logging.error(f"JKS_PATH: {jks_path} is not a file")
             sys.exit(1)
-    print(len(config.jks_password))
-    if  len(config.jks_path) != len(config.jks_password) or len(config.jks_password) != 1:
+
+    if len(config.jks_path) != len(config.jks_password) or len(config.jks_password) != 1:
         logger.error(f"JKS_PASSWORD number of elements not equal")
         sys.exit(3)
 
     jks_password_single = True if len(config.jks_password) == 1 else False
-
 
     if not config.platform_metrics:
         prometheus_client.REGISTRY.unregister(prometheus_client.GC_COLLECTOR)
